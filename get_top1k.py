@@ -3,20 +3,40 @@ import pandas as pd
 import requests
 import json
 import time
+import argparse
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 
+
 if __name__ == '__main__':
-    csvfname = 'top1k.csv'
-    jsonfname = 'top.json'
-    save_progress_period = 10
+    parser = argparse.ArgumentParser()
+    parser.add_argument(metavar='INPUT', dest='input',
+                        help='csv file containing series ids')
+    parser.add_argument(metavar='OUTPUT', dest='output',
+                        help='json file where the output will be saved')
+    parser.add_argument('-d', '--delay', default=10,
+                        help='# of seconds of delay between GET requests')
+    parser.add_argument('--save-every', dest='save_every', default=10,
+                        help='# requests to do before saving progress')
+    parser.add_argument('-f', '--force', action='store_true',
+                        help='ignore progress (initial data from INPUT)')
+    args = parser.parse_args()
 
+    csvfname = args.input                   # 'top1k.csv'
+    jsonfname = args.output                 # 'top.json'
+    save_progress_period = args.save_every  # 10
+
+    print('csvfname =', csvfname)
+    print('jsonfname =', jsonfname)
     data = pd.read_csv(csvfname)
-    with open(jsonfname) as f:
-        saved = json.loads(f.read())
-    print("Initial saved data has", len(saved), "entries.")
-
     series_ids = data['seriesid'].unique()
+
+    if args.force:
+        saved = {}
+    else:   # resume
+        with open(jsonfname) as f:
+            saved = json.loads(f.read())
+        print("Initial saved data has", len(saved), "entries.")
 
     sess = requests.Session()
     retries = Retry(total=5, backoff_factor=3)
@@ -34,13 +54,13 @@ if __name__ == '__main__':
                 loaded = True
 
                 # save progress every save_progress_period
-                if i % save_progress_period == save_progress_period - 1:
+                if i % save_progress_period >= save_progress_period - 1:
                     print("\nSaving progress...", end= ' ', flush=True)
                     with open(jsonfname, 'w') as f:
                         f.write(json.dumps(saved, indent=4))
                     print("Done.")
 
-                time.sleep(30)
+                time.sleep(int(args.delay))
     except (KeyboardInterrupt, requests.exceptions.ConnectionError) as e:
         print('\n', e, sep='')
         if loaded:
